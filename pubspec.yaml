@@ -93,3 +93,4 @@ identity_name: com.example.mhjzb
 msix_version: 1.0.0.0
 logo_path: windows/runner/resources/app_icon.ico
 capabilities: internetClient
+install_certificate: false
