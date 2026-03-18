@@ -15,6 +15,8 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accountCount = holder.accountCount;
+    final totalRunning = holder.isTotalRunning;
+    final totalStart = holder.totalStartTime;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Center(
@@ -33,16 +35,63 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 32),
               _buildAccountSelector(context, accountCount),
               const SizedBox(height: 16),
-              _SessionCard(
-                type: ActivityType.unknown,
-                holder: holder,
-                primary: true,
+              Card(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '总计时',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (totalRunning && totalStart != null) ...[
+                        _TimerDisplay(
+                          startTime: totalStart,
+                          accountCount: accountCount,
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                          onPressed: () => holder.endTotalSession(),
+                          icon: const Icon(Icons.stop_rounded),
+                          label: const Text('结束总计时'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                          ),
+                        ),
+                      ] else ...[
+                        FilledButton.icon(
+                          onPressed: () => holder.startTotalSession(),
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('开始总计时'),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '从开始到结束期间，挖图/封妖/副本的收益会汇总为一条总记录。',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               ...[
                 ActivityType.digMap,
                 ActivityType.sealDemon,
                 ActivityType.dungeon,
+                ActivityType.bell,
+                ActivityType.sundayEvent,
+                ActivityType.cixin,
               ].map((t) => _SessionCard(type: t, holder: holder)),
               const SizedBox(height: 16),
               if (holder.anyRunning)
@@ -94,12 +143,10 @@ class _SessionCard extends StatelessWidget {
   const _SessionCard({
     required this.type,
     required this.holder,
-    this.primary = false,
   });
 
   final ActivityType type;
   final AppStateHolder holder;
-  final bool primary;
 
   @override
   Widget build(BuildContext context) {
@@ -107,12 +154,7 @@ class _SessionCard extends StatelessWidget {
     final startTime = holder.startTimeFor(type);
     final accountCount = holder.accountCountFor(type);
 
-    final color = primary
-        ? Theme.of(context).colorScheme.surfaceContainerHighest
-        : Theme.of(context).colorScheme.surface;
-
     return Card(
-      color: color,
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16),

@@ -7,6 +7,9 @@ enum ActivityType {
   digMap, // 挖图
   sealDemon, // 封妖
   dungeon, // 副本
+  bell, // 铃铛
+  sundayEvent, // 周日活动
+  cixin, // 慈心
 }
 
 extension ActivityTypeX on ActivityType {
@@ -16,6 +19,9 @@ extension ActivityTypeX on ActivityType {
       ActivityType.digMap: '挖图',
       ActivityType.sealDemon: '封妖',
       ActivityType.dungeon: '副本',
+      ActivityType.bell: '铃铛',
+      ActivityType.sundayEvent: '周日活动',
+      ActivityType.cixin: '慈心',
     };
     return names[this]!;
   }
@@ -207,6 +213,7 @@ class SessionRecord {
   int pointPricePerPoint;
   int cashIncome; // 收获的金钱（梦幻币）
   int digMapCount; // 挖图次数（仅挖图用）
+  String? groupId; // 所属总计时分组 ID（总计时开始/结束生成）
   List<HarvestItem> items;
   DateTime createdAt;
 
@@ -219,6 +226,7 @@ class SessionRecord {
     required this.pointPricePerPoint,
     this.cashIncome = 0,
     this.digMapCount = 0,
+    this.groupId,
     List<HarvestItem>? items,
     DateTime? createdAt,
   })  : items = items ?? [],
@@ -260,6 +268,7 @@ class SessionRecord {
         'pointPricePerPoint': pointPricePerPoint,
         'cashIncome': cashIncome,
         'digMapCount': digMapCount,
+        'groupId': groupId,
         'items': items.map((i) => _harvestToJson(i)).toList(),
         'createdAt': createdAt.toIso8601String(),
         'profit': profit(settings),
@@ -322,6 +331,7 @@ class SessionRecord {
       pointPricePerPoint: (json['pointPricePerPoint'] as num).toInt(),
       cashIncome: (json['cashIncome'] as num?)?.toInt() ?? 0,
       digMapCount: (json['digMapCount'] as num?)?.toInt() ?? 0,
+      groupId: json['groupId'] as String?,
       items: itemList
           .map((e) => harvestFromJson(e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}))
           .toList(),

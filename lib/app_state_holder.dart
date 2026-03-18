@@ -8,6 +8,7 @@ class _RunningSession {
   int accountCount = 1;
   int cashIncome = 0;
   int digMapCount = 0;
+  String? groupId;
   List<HarvestItem> items = [];
 
   void resetForStart({required int accountCount}) {
@@ -16,6 +17,7 @@ class _RunningSession {
     this.accountCount = accountCount;
     cashIncome = 0;
     digMapCount = 0;
+    groupId = null;
     items = [];
   }
 
@@ -24,6 +26,7 @@ class _RunningSession {
     startTime = null;
     cashIncome = 0;
     digMapCount = 0;
+    groupId = null;
     items = [];
   }
 }
@@ -51,8 +54,12 @@ class AppStateHolder extends ChangeNotifier {
   int _accountCount = 1;
   ActivityType _selectedActivity = ActivityType.unknown;
   late final Map<ActivityType, _RunningSession> _sessions = {
-    for (final t in ActivityType.values) t: _RunningSession(),
+    for (final t in ActivityType.values.where((t) => t != ActivityType.unknown))
+      t: _RunningSession(),
   };
+  bool _isTotalRunning = false;
+  DateTime? _totalStartTime;
+  String? _currentGroupId;
 
   PriceSettings get settings => _settings;
   List<SessionRecord> get records => _records;
@@ -61,11 +68,16 @@ class AppStateHolder extends ChangeNotifier {
   ActivityType get selectedActivity => _selectedActivity;
   void setSelectedActivity(ActivityType t) {
     if (_selectedActivity == t) return;
+    if (t == ActivityType.unknown) return; // 总计时不是一个具体活动分类
     _selectedActivity = t;
     notifyListeners();
   }
 
-  bool get anyRunning => _sessions.values.any((s) => s.isRunning);
+  bool get anyRunning =>
+      _isTotalRunning || _sessions.values.any((s) => s.isRunning);
+
+  bool get isTotalRunning => _isTotalRunning;
+  DateTime? get totalStartTime => _totalStartTime;
 
   bool isRunningFor(ActivityType t) => _sessions[t]?.isRunning ?? false;
   DateTime? startTimeFor(ActivityType t) => _sessions[t]?.startTime;
@@ -111,6 +123,11 @@ class AppStateHolder extends ChangeNotifier {
     final s = _sessions[type];
     if (s == null || s.isRunning) return;
     s.resetForStart(accountCount: _accountCount);
+    // 在开始时就绑定所属总计时分组，这样即使总计时先结束，
+    // 该活动后续结束保存时仍能归入同一条总计时。
+    if (_isTotalRunning && _currentGroupId != null) {
+      s.groupId = _currentGroupId;
+    }
     notifyListeners();
   }
 
@@ -173,6 +190,7 @@ class AppStateHolder extends ChangeNotifier {
       pointPricePerPoint: _settings.pointPrice,
       cashIncome: s.cashIncome,
       digMapCount: s.digMapCount,
+      groupId: s.groupId,
       items: List.from(s.items),
     );
     await _storage.appendRecord(record, _settings);
@@ -180,6 +198,29 @@ class AppStateHolder extends ChangeNotifier {
     s.resetForStop();
     notifyListeners();
     return record;
+  }
+
+  /// 总计时：仅记录一段时间的所有活动，不单独生成记录，结束时通过 groupId 在历史页汇总。
+  void startTotalSession() {
+    if (_isTotalRunning) return;
+    _isTotalRunning = true;
+    _totalStartTime = DateTime.now();
+    _currentGroupId = '${_totalStartTime!.millisecondsSinceEpoch}';
+    // 如果有活动在总计时开始前就已经在跑，也把它们归入本次总计时。
+    for (final s in _sessions.values) {
+      if (s.isRunning && (s.groupId == null || s.groupId!.isEmpty)) {
+        s.groupId = _currentGroupId;
+      }
+    }
+    notifyListeners();
+  }
+
+  void endTotalSession() {
+    if (!_isTotalRunning || _totalStartTime == null) return;
+    _isTotalRunning = false;
+    _totalStartTime = null;
+    _currentGroupId = null;
+    notifyListeners();
   }
 
   /// 从历史中删除一条记录并持久化。
