@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import '../models/app_state.dart';
 import '../app_state_holder.dart';
 
-String _formatMoney(int n) => n.toString().replaceAllMapped(
-  RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-  (m) => '${m[1]},',
-);
+String _formatMoney(int n) {
+  final sign = n < 0 ? '-' : '';
+  final raw = n.abs().toString();
+  final formatted = raw.replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
+  return '$sign$formatted';
+}
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, required this.holder});

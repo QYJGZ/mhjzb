@@ -410,6 +410,18 @@ class _CashTile extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
 
+  static int _parseSignedInt(String s) {
+    final trimmed = s.trim();
+    if (trimmed.isEmpty) return 0;
+    final m = RegExp(r'^-?\d+').firstMatch(trimmed);
+    if (m != null) return int.tryParse(m.group(0)!) ?? 0;
+    // 兼容用户输入中夹杂逗号/空格等情况：保留前导 '-'，其余只取数字
+    final isNegative = trimmed.startsWith('-');
+    final digits = trimmed.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isEmpty) return 0;
+    return int.tryParse('${isNegative ? '-' : ''}$digits') ?? 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -419,19 +431,20 @@ class _CashTile extends StatelessWidget {
         trailing: SizedBox(
           width: 140,
           child: TextField(
-            keyboardType: TextInputType.number,
+            keyboardType: const TextInputType.numberWithOptions(
+              signed: true,
+              decimal: false,
+            ),
             decoration: const InputDecoration(
               labelText: '金额',
               border: OutlineInputBorder(),
               isDense: true,
             ),
             onSubmitted: (s) {
-              final n = int.tryParse(s.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
-              onChanged(n);
+              onChanged(_parseSignedInt(s));
             },
             onChanged: (s) {
-              final n = int.tryParse(s.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
-              onChanged(n);
+              onChanged(_parseSignedInt(s));
             },
           ),
         ),

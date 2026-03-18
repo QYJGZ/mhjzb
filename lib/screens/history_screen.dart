@@ -654,7 +654,12 @@ class _RecordCard extends StatelessWidget {
   String _formatMoney(int n) => _globalFormatMoney(n);
 }
 
-String _globalFormatMoney(int n) => n.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
+String _globalFormatMoney(int n) {
+  final sign = n < 0 ? '-' : '';
+  final raw = n.abs().toString();
+  final formatted = raw.replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
+  return '$sign$formatted';
+}

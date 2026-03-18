@@ -391,6 +391,33 @@ class AppStateHolder extends ChangeNotifier {
 
   void endTotalSession() {
     if (!_isTotalRunning || _totalStartTime == null) return;
+    final startTime = _totalStartTime!;
+    final endTime = DateTime.now();
+    final groupId = _currentGroupId;
+
+    // 如果用户在「收益」页对总计时录入了金钱/物品（包括负数调整），
+    // 结束总计时时把它保存成一条“总计时”记录，这样历史汇总会统计到。
+    if (_totalCashIncome != 0 || _totalItems.isNotEmpty) {
+      final record = SessionRecord(
+        id: '${startTime.millisecondsSinceEpoch}-total',
+        activityType: ActivityType.unknown,
+        startTime: startTime,
+        endTime: endTime,
+        accountCount: _totalAccountCount,
+        accountTimeline: List<AccountCountChange>.from(_totalAccountTimeline),
+        pointPricePerPoint: _settings.pointPrice,
+        cashIncome: _totalCashIncome,
+        digMapCount: 0,
+        groupId: groupId,
+        items: List<HarvestItem>.from(_totalItems),
+      );
+      // 异步持久化：不阻塞 UI，失败也不影响结束总计时。
+      _storage.appendRecord(record, _settings).then((_) {
+        _records.insert(0, record);
+        notifyListeners();
+      }).catchError((_) {});
+    }
+
     _isTotalRunning = false;
     _totalStartTime = null;
     _currentGroupId = null;
