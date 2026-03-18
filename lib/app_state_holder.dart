@@ -2,6 +2,32 @@ import 'package:flutter/foundation.dart';
 import 'models/app_state.dart';
 import 'services/storage_service.dart';
 
+class _RunningSession {
+  bool isRunning = false;
+  DateTime? startTime;
+  int accountCount = 1;
+  int cashIncome = 0;
+  int digMapCount = 0;
+  List<HarvestItem> items = [];
+
+  void resetForStart({required int accountCount}) {
+    isRunning = true;
+    startTime = DateTime.now();
+    this.accountCount = accountCount;
+    cashIncome = 0;
+    digMapCount = 0;
+    items = [];
+  }
+
+  void resetForStop() {
+    isRunning = false;
+    startTime = null;
+    cashIncome = 0;
+    digMapCount = 0;
+    items = [];
+  }
+}
+
 class AppStateHolder extends ChangeNotifier {
   AppStateHolder._();
   static late final AppStateHolder _instance;
@@ -22,19 +48,39 @@ class AppStateHolder extends ChangeNotifier {
   PriceSettings _settings = PriceSettings();
   List<SessionRecord> _records = [];
 
-  bool _isRunning = false;
-  DateTime? _startTime;
   int _accountCount = 1;
-  int _cashIncome = 0;
-  List<HarvestItem> _sessionItems = [];
+  ActivityType _selectedActivity = ActivityType.unknown;
+  late final Map<ActivityType, _RunningSession> _sessions = {
+    for (final t in ActivityType.values) t: _RunningSession(),
+  };
 
   PriceSettings get settings => _settings;
   List<SessionRecord> get records => _records;
-  bool get isRunning => _isRunning;
-  DateTime? get startTime => _startTime;
   int get accountCount => _accountCount;
-  int get cashIncome => _cashIncome;
-  List<HarvestItem> get sessionItems => List.unmodifiable(_sessionItems);
+
+  ActivityType get selectedActivity => _selectedActivity;
+  void setSelectedActivity(ActivityType t) {
+    if (_selectedActivity == t) return;
+    _selectedActivity = t;
+    notifyListeners();
+  }
+
+  bool get anyRunning => _sessions.values.any((s) => s.isRunning);
+
+  bool isRunningFor(ActivityType t) => _sessions[t]?.isRunning ?? false;
+  DateTime? startTimeFor(ActivityType t) => _sessions[t]?.startTime;
+  int accountCountFor(ActivityType t) => _sessions[t]?.accountCount ?? 1;
+  int cashIncomeFor(ActivityType t) => _sessions[t]?.cashIncome ?? 0;
+  int digMapCountFor(ActivityType t) => _sessions[t]?.digMapCount ?? 0;
+  List<HarvestItem> sessionItemsFor(ActivityType t) =>
+      List.unmodifiable(_sessions[t]?.items ?? const []);
+
+  /// 兼容旧页面调用：默认取当前选择的活动类型。
+  bool get isRunning => isRunningFor(_selectedActivity);
+  DateTime? get startTime => startTimeFor(_selectedActivity);
+  int get cashIncome => cashIncomeFor(_selectedActivity);
+  int get digMapCount => digMapCountFor(_selectedActivity);
+  List<HarvestItem> get sessionItems => sessionItemsFor(_selectedActivity);
 
   Future<void> loadSettings() async {
     _settings = await _storage.loadSettings();
@@ -55,67 +101,83 @@ class AppStateHolder extends ChangeNotifier {
   }
 
   void setAccountCount(int n) {
-    if (!_isRunning && n >= 1 && n <= 10) {
+    if (n >= 1 && n <= 10) {
       _accountCount = n;
       notifyListeners();
     }
   }
 
-  void startSession() {
-    if (_isRunning) return;
-    _isRunning = true;
-    _startTime = DateTime.now();
-    _sessionItems = [];
-    _cashIncome = 0;
+  void startSession(ActivityType type) {
+    final s = _sessions[type];
+    if (s == null || s.isRunning) return;
+    s.resetForStart(accountCount: _accountCount);
     notifyListeners();
   }
 
   void setCashIncome(int n) {
-    _cashIncome = n;
+    final s = _sessions[_selectedActivity];
+    if (s == null || !s.isRunning) return;
+    s.cashIncome = n;
+    notifyListeners();
+  }
+
+  void setDigMapCount(int n) {
+    if (_selectedActivity != ActivityType.digMap) return;
+    final s = _sessions[_selectedActivity];
+    if (s == null || !s.isRunning) return;
+    s.digMapCount = n < 0 ? 0 : n;
     notifyListeners();
   }
 
   void addRing(RingLevel level, int count) {
-    _sessionItems.add(HarvestItem.ring(level, count));
+    final s = _sessions[_selectedActivity];
+    if (s == null || !s.isRunning) return;
+    s.items.add(HarvestItem.ring(level, count));
     notifyListeners();
   }
 
   void addGem(GemType type, int level, int count) {
-    _sessionItems.add(HarvestItem.gem(type, level, count));
+    final s = _sessions[_selectedActivity];
+    if (s == null || !s.isRunning) return;
+    s.items.add(HarvestItem.gem(type, level, count));
     notifyListeners();
   }
 
   void addOther(String name, int count) {
-    _sessionItems.add(HarvestItem.other(name, count));
+    final s = _sessions[_selectedActivity];
+    if (s == null || !s.isRunning) return;
+    s.items.add(HarvestItem.other(name, count));
     notifyListeners();
   }
 
   void removeItemAt(int index) {
-    if (index >= 0 && index < _sessionItems.length) {
-      _sessionItems.removeAt(index);
+    final s = _sessions[_selectedActivity];
+    if (s == null || !s.isRunning) return;
+    if (index >= 0 && index < s.items.length) {
+      s.items.removeAt(index);
       notifyListeners();
     }
   }
 
   /// 结束本次计时：计算收益并写入历史，返回本场记录（用于展示本次收益）。
-  Future<SessionRecord?> endSession() async {
-    if (!_isRunning || _startTime == null) return null;
+  Future<SessionRecord?> endSession(ActivityType type) async {
+    final s = _sessions[type];
+    if (s == null || !s.isRunning || s.startTime == null) return null;
     final endTime = DateTime.now();
     final record = SessionRecord(
-      id: '${_startTime!.millisecondsSinceEpoch}',
-      startTime: _startTime!,
+      id: '${s.startTime!.millisecondsSinceEpoch}',
+      activityType: type,
+      startTime: s.startTime!,
       endTime: endTime,
-      accountCount: _accountCount,
+      accountCount: s.accountCount,
       pointPricePerPoint: _settings.pointPrice,
-      cashIncome: _cashIncome,
-      items: List.from(_sessionItems),
+      cashIncome: s.cashIncome,
+      digMapCount: s.digMapCount,
+      items: List.from(s.items),
     );
     await _storage.appendRecord(record, _settings);
     _records.insert(0, record);
-    _isRunning = false;
-    _startTime = null;
-    _sessionItems = [];
-    _cashIncome = 0;
+    s.resetForStop();
     notifyListeners();
     return record;
   }

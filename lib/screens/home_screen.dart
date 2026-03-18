@@ -14,8 +14,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isRunning = holder.isRunning;
-    final startTime = holder.startTime;
     final accountCount = holder.accountCount;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -33,52 +31,23 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 32),
-              _buildAccountSelector(context, accountCount, isRunning),
-              const SizedBox(height: 32),
-              if (isRunning && startTime != null) ...[
-                _TimerDisplay(startTime: startTime, accountCount: accountCount),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: () async {
-                    final record = await holder.endSession();
-                    if (!context.mounted) return;
-                    if (record != null) {
-                      final profit = record.profit(holder.settings);
-                      final msg = profit >= 0
-                          ? '已保存到历史 · 本次收益 +${_formatMoney(profit)}'
-                          : '已保存到历史 · 本次收益 ${_formatMoney(profit)}';
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(msg)));
-                    }
-                  },
-                  icon: const Icon(Icons.stop_rounded),
-                  label: const Text('结束并结算'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                    backgroundColor: Colors.red.shade700,
-                  ),
-                ),
-              ] else ...[
-                FilledButton.icon(
-                  onPressed: () => holder.startSession(),
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('开始计时'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                  ),
-                ),
-              ],
+              _buildAccountSelector(context, accountCount),
               const SizedBox(height: 16),
-              if (isRunning)
+              _SessionCard(
+                type: ActivityType.unknown,
+                holder: holder,
+                primary: true,
+              ),
+              const SizedBox(height: 12),
+              ...[
+                ActivityType.digMap,
+                ActivityType.sealDemon,
+                ActivityType.dungeon,
+              ].map((t) => _SessionCard(type: t, holder: holder)),
+              const SizedBox(height: 16),
+              if (holder.anyRunning)
                 Text(
-                  '可在「收益」页添加物品与金钱，结束后自动计算今日收益',
+                  '可在「收益」页按活动类型添加物品与金钱，结束后自动计算该活动收益并保存到历史',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -91,11 +60,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAccountSelector(
-    BuildContext context,
-    int accountCount,
-    bool isRunning,
-  ) {
+  Widget _buildAccountSelector(BuildContext context, int accountCount) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -114,12 +79,112 @@ class HomeScreen extends StatelessWidget {
                 return ChoiceChip(
                   label: Text('$n'),
                   selected: selected,
-                  onSelected: isRunning
-                      ? null
-                      : (_) => holder.setAccountCount(n),
+                  onSelected: (_) => holder.setAccountCount(n),
                 );
               }),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.type,
+    required this.holder,
+    this.primary = false,
+  });
+
+  final ActivityType type;
+  final AppStateHolder holder;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRunning = holder.isRunningFor(type);
+    final startTime = holder.startTimeFor(type);
+    final accountCount = holder.accountCountFor(type);
+
+    final color = primary
+        ? Theme.of(context).colorScheme.surfaceContainerHighest
+        : Theme.of(context).colorScheme.surface;
+
+    return Card(
+      color: color,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  type.displayName,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                if (isRunning)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '计时中',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: Colors.green.shade900,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (isRunning && startTime != null) ...[
+              _TimerDisplay(startTime: startTime, accountCount: accountCount),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () async {
+                  final record = await holder.endSession(type);
+                  if (!context.mounted) return;
+                  if (record != null) {
+                    final profit = record.profit(holder.settings);
+                    final msg = profit >= 0
+                        ? '${type.displayName} 已保存 · 本次收益 +${_formatMoney(profit)}'
+                        : '${type.displayName} 已保存 · 本次收益 ${_formatMoney(profit)}';
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(msg)));
+                  }
+                },
+                icon: const Icon(Icons.stop_rounded),
+                label: const Text('结束并结算'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                ),
+              ),
+            ] else ...[
+              FilledButton.icon(
+                onPressed: () => holder.startSession(type),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('开始计时'),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '开始时将按当前在线账号数：$accountCount 个号',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
           ],
         ),
       ),

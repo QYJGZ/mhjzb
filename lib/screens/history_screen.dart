@@ -12,7 +12,9 @@ class HistoryScreen extends StatelessWidget {
     final records = holder.records;
     final settings = holder.settings;
     final now = DateTime.now();
-    final startOfWeek = now.subtract(Duration(days: now.weekday - 1)).copyWith(
+    final startOfWeek = now
+        .subtract(Duration(days: now.weekday - 1))
+        .copyWith(
           hour: 0,
           minute: 0,
           second: 0,
@@ -25,9 +27,21 @@ class HistoryScreen extends StatelessWidget {
     int sumProfit(Iterable<SessionRecord> list) =>
         list.fold(0, (s, r) => s + r.profit(settings));
 
-    final weekRecords = records.where((r) => r.endTime.isAfter(startOfWeek) || r.endTime.isAtSameMomentAs(startOfWeek));
-    final monthRecords = records.where((r) => r.endTime.isAfter(startOfMonth) || r.endTime.isAtSameMomentAs(startOfMonth));
-    final yearRecords = records.where((r) => r.endTime.isAfter(startOfYear) || r.endTime.isAtSameMomentAs(startOfYear));
+    final weekRecords = records.where(
+      (r) =>
+          r.endTime.isAfter(startOfWeek) ||
+          r.endTime.isAtSameMomentAs(startOfWeek),
+    );
+    final monthRecords = records.where(
+      (r) =>
+          r.endTime.isAfter(startOfMonth) ||
+          r.endTime.isAtSameMomentAs(startOfMonth),
+    );
+    final yearRecords = records.where(
+      (r) =>
+          r.endTime.isAfter(startOfYear) ||
+          r.endTime.isAtSameMomentAs(startOfYear),
+    );
 
     final weekProfit = sumProfit(weekRecords);
     final monthProfit = sumProfit(monthRecords);
@@ -45,8 +59,8 @@ class HistoryScreen extends StatelessWidget {
               Text(
                 '历史记录',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 20),
               Row(
@@ -85,18 +99,20 @@ class HistoryScreen extends StatelessWidget {
                       child: Text(
                         '暂无记录，结束一次计时后会自动保存',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
                 )
               else
-                ...records.map((r) => _RecordCard(
-                      record: r,
-                      settings: settings,
-                      holder: holder,
-                    )),
+                ...records.map(
+                  (r) => _RecordCard(
+                    record: r,
+                    settings: settings,
+                    holder: holder,
+                  ),
+                ),
             ],
           ),
         ),
@@ -116,8 +132,10 @@ class _SummaryCard extends StatelessWidget {
   final int profit;
   final int count;
 
-  static String _formatMoney(int n) =>
-      n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+  static String _formatMoney(int n) => n.toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -131,23 +149,23 @@ class _SummaryCard extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               '${profit >= 0 ? '+' : ''}${_formatMoney(profit)}',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
-                  ),
+                fontWeight: FontWeight.bold,
+                color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
+              ),
             ),
             if (count > 0)
               Text(
                 '$count 笔',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
           ],
         ),
@@ -175,6 +193,8 @@ class _RecordCard extends StatelessWidget {
     final duration = record.duration;
     final hours = duration.inHours;
     final minutes = duration.inMinutes % 60;
+    final activityLabel = record.activityType.displayName;
+    final extraCost = record.extraCost(settings);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -194,7 +214,10 @@ class _RecordCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: profit >= 0
                             ? Colors.green.shade100
@@ -203,9 +226,12 @@ class _RecordCard extends StatelessWidget {
                       ),
                       child: Text(
                         '${profit >= 0 ? '+' : ''}${_formatMoney(profit)}',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
                               fontWeight: FontWeight.bold,
-                              color: profit >= 0 ? Colors.green.shade900 : Colors.red.shade900,
+                              color: profit >= 0
+                                  ? Colors.green.shade900
+                                  : Colors.red.shade900,
                             ),
                       ),
                     ),
@@ -241,17 +267,18 @@ class _RecordCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '${record.accountCount} 个号 · $hours时$minutes分 · 点卡消耗 ${_formatMoney(pointCost)}',
+              '$activityLabel · ${record.accountCount} 个号 · $hours时$minutes分 · 点卡消耗 ${_formatMoney(pointCost)}'
+              '${extraCost > 0 ? ' · 额外消耗 ${_formatMoney(extraCost)}' : ''}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               '物品 ${_formatMoney(itemsVal)} + 金钱 ${_formatMoney(record.cashIncome)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -267,6 +294,8 @@ class _RecordCard extends StatelessWidget {
     return '${d.month}月${d.day}日 ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  String _formatMoney(int n) =>
-      n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+  String _formatMoney(int n) => n.toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 }

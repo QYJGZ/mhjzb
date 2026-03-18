@@ -1,6 +1,26 @@
 /// 梦幻西游点卡：每小时 6 点，每 10 分钟 1 点，精确到秒
 const double kPointsPerHour = 6.0;
 
+/// 活动类型：用于区分计时与收益统计
+enum ActivityType {
+  unknown,
+  digMap, // 挖图
+  sealDemon, // 封妖
+  dungeon, // 副本
+}
+
+extension ActivityTypeX on ActivityType {
+  String get displayName {
+    const names = {
+      ActivityType.unknown: '总计时',
+      ActivityType.digMap: '挖图',
+      ActivityType.sealDemon: '封妖',
+      ActivityType.dungeon: '副本',
+    };
+    return names[this]!;
+  }
+}
+
 /// 环装等级
 enum RingLevel { ring60, ring70, ring80 }
 
@@ -180,21 +200,25 @@ class HarvestItem {
 /// 单次会话（从开始到结束）的完整记录
 class SessionRecord {
   String id;
+  ActivityType activityType;
   DateTime startTime;
   DateTime endTime;
   int accountCount;
   int pointPricePerPoint;
   int cashIncome; // 收获的金钱（梦幻币）
+  int digMapCount; // 挖图次数（仅挖图用）
   List<HarvestItem> items;
   DateTime createdAt;
 
   SessionRecord({
     required this.id,
+    this.activityType = ActivityType.unknown,
     required this.startTime,
     required this.endTime,
     required this.accountCount,
     required this.pointPricePerPoint,
     this.cashIncome = 0,
+    this.digMapCount = 0,
     List<HarvestItem>? items,
     DateTime? createdAt,
   })  : items = items ?? [],
@@ -209,23 +233,33 @@ class SessionRecord {
   /// 点卡消耗（梦幻币）
   int pointCost() => (pointsConsumed * pointPricePerPoint).round();
 
+  int extraCost(PriceSettings settings) {
+    if (activityType == ActivityType.digMap) {
+      final mapPrice = settings.otherItemPrices['藏宝图'] ?? 0;
+      return digMapCount * mapPrice;
+    }
+    return 0;
+  }
+
   /// 物品总价值（梦幻币）
   int itemsValue(PriceSettings settings) {
     return items.fold(0, (sum, i) => sum + i.value(settings));
   }
 
-  /// 今日收益 = 物品收入 + 现金收入 - 点卡消耗
+  /// 今日收益 = 物品收入 + 现金收入 - 点卡消耗 - 额外消耗（如挖图成本）
   int profit(PriceSettings settings) {
-    return itemsValue(settings) + cashIncome - pointCost();
+    return itemsValue(settings) + cashIncome - pointCost() - extraCost(settings);
   }
 
   Map<String, dynamic> toJson(PriceSettings settings) => {
         'id': id,
+        'activityType': activityType.name,
         'startTime': startTime.toIso8601String(),
         'endTime': endTime.toIso8601String(),
         'accountCount': accountCount,
         'pointPricePerPoint': pointPricePerPoint,
         'cashIncome': cashIncome,
+        'digMapCount': digMapCount,
         'items': items.map((i) => _harvestToJson(i)).toList(),
         'createdAt': createdAt.toIso8601String(),
         'profit': profit(settings),
@@ -270,13 +304,24 @@ class SessionRecord {
   static SessionRecord fromJson(Map<String, dynamic> json) {
     final itemListRaw = json['items'];
     final itemList = itemListRaw is List ? itemListRaw : [];
+    ActivityType activityType = ActivityType.unknown;
+    final rawType = json['activityType'];
+    if (rawType is String && rawType.isNotEmpty) {
+      try {
+        activityType = ActivityType.values.byName(rawType);
+      } catch (_) {
+        activityType = ActivityType.unknown;
+      }
+    }
     return SessionRecord(
       id: json['id'] as String? ?? '',
+      activityType: activityType,
       startTime: DateTime.parse(json['startTime'] as String),
       endTime: DateTime.parse(json['endTime'] as String),
       accountCount: (json['accountCount'] as num).toInt(),
       pointPricePerPoint: (json['pointPricePerPoint'] as num).toInt(),
       cashIncome: (json['cashIncome'] as num?)?.toInt() ?? 0,
+      digMapCount: (json['digMapCount'] as num?)?.toInt() ?? 0,
       items: itemList
           .map((e) => harvestFromJson(e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}))
           .toList(),

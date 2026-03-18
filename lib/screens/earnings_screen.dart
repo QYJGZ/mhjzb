@@ -20,11 +20,17 @@ class EarningsScreen extends StatelessWidget {
 
   final AppStateHolder holder;
 
-  static String _formatMoney(int n) =>
-      '${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')} 梦幻币';
+  static String _formatMoney(int n) {
+    final sign = n < 0 ? '-' : '';
+    final v = (n.abs() / 10000.0);
+    var s = v.toStringAsFixed(2);
+    s = s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+    return '$sign$s万';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final activity = holder.selectedActivity;
     final sessionItems = holder.sessionItems;
     final cashIncome = holder.cashIncome;
     final settings = holder.settings;
@@ -34,20 +40,20 @@ class EarningsScreen extends StatelessWidget {
       (sum, i) => sum + i.value(settings),
     );
 
-    if (!canEdit) {
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Card(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('请先在首页点击「开始计时」后再录入收益。'),
-            ),
-          ),
-        ),
-      );
-    }
+    final startTime = holder.startTime;
+    final accountCount = holder.accountCountFor(activity);
+    final duration = (canEdit && startTime != null)
+        ? DateTime.now().difference(startTime)
+        : Duration.zero;
+    final pointsConsumed =
+        duration.inSeconds / 3600.0 * kPointsPerHour * accountCount;
+    final pointCost = (pointsConsumed * settings.pointPrice).round();
+    final grossIncome = cashIncome + itemsValue;
+    final digMapCount = holder.digMapCount;
+    final treasureMapPrice = settings.otherItemPrices['藏宝图'] ?? 0;
+    final digMapCost =
+        activity == ActivityType.digMap ? digMapCount * treasureMapPrice : 0;
+    final netProfit = grossIncome - pointCost - digMapCost;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -62,6 +68,30 @@ class EarningsScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(left: 8, bottom: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        '活动类型',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      ...ActivityType.values
+                          .map(
+                            (t) => ChoiceChip(
+                              label: Text(t.displayName),
+                              selected: activity == t,
+                              onSelected: (_) => holder.setSelectedActivity(t),
+                            ),
+                          ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 8),
                   child: Text(
                     '点击图标记录获取',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -69,48 +99,65 @@ class EarningsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                Expanded(
-                  child: Builder(
-                    builder: (context) {
-                      final gridItems = <_GridItem>[];
-                      for (final item in kItemAssets) {
-                        if (item.isGem && item.gemType != null) {
-                          for (var level = 1; level <= 3; level++) {
-                            gridItems.add(_GridItem(
-                              assetPath: item.assetPath,
-                              label: '${item.displayName}$level级',
-                              onTap: () => holder.addGem(item.gemType!, level, 1),
-                            ));
+                if (!canEdit)
+                  Card(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('「${activity.displayName}」未开始计时，请先在首页开始该活动。'),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: Builder(
+                      builder: (context) {
+                        final gridItems = <_GridItem>[];
+                        for (final item in kItemAssets) {
+                          if (item.isGem && item.gemType != null) {
+                            for (var level = 1; level <= 3; level++) {
+                              gridItems.add(
+                                _GridItem(
+                                  assetPath: item.assetPath,
+                                  label: '${item.displayName}$level级',
+                                  onTap: () =>
+                                      holder.addGem(item.gemType!, level, 1),
+                                ),
+                              );
+                            }
+                          } else {
+                            gridItems.add(
+                              _GridItem(
+                                assetPath: item.assetPath,
+                                label: item.displayName,
+                                onTap: () =>
+                                    holder.addOther(item.displayName, 1),
+                              ),
+                            );
                           }
-                        } else {
-                          gridItems.add(_GridItem(
-                            assetPath: item.assetPath,
-                            label: item.displayName,
-                            onTap: () => holder.addOther(item.displayName, 1),
-                          ));
                         }
-                      }
-                      return GridView.builder(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 7,
-                              mainAxisSpacing: 8,
-                              crossAxisSpacing: 3,
-                              childAspectRatio: 0.85,
-                            ),
-                        itemCount: gridItems.length,
-                        itemBuilder: (context, index) {
-                          final gi = gridItems[index];
-                          return _ItemIconTile(
-                            assetPath: gi.assetPath,
-                            displayName: gi.label,
-                            onTap: gi.onTap,
-                          );
-                        },
-                      );
-                    },
+                        return GridView.builder(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 7,
+                                mainAxisSpacing: 8,
+                                crossAxisSpacing: 3,
+                                childAspectRatio: 0.85,
+                              ),
+                          itemCount: gridItems.length,
+                          itemBuilder: (context, index) {
+                            final gi = gridItems[index];
+                            return _ItemIconTile(
+                              assetPath: gi.assetPath,
+                              displayName: gi.label,
+                              onTap: gi.onTap,
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -122,13 +169,30 @@ class EarningsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (activity == ActivityType.digMap)
+                    Card(
+                      child: ListTile(
+                        title: const Text('挖图数量'),
+                        subtitle: Text(
+                          '藏宝图单价: ${_formatMoney(treasureMapPrice)} · 成本: ${_formatMoney(digMapCost)}',
+                        ),
+                        trailing: SizedBox(
+                          width: 140,
+                          child: _DigMapCountField(
+                            enabled: canEdit,
+                            value: digMapCount,
+                            onChanged: holder.setDigMapCount,
+                          ),
+                        ),
+                      ),
+                    ),
                   _CashTile(
                     value: cashIncome,
                     onChanged: (v) => holder.setCashIncome(v),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '已获取（${sessionItems.length}）',
+                    '已获取（${activity.displayName} · ${sessionItems.length}）',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   const SizedBox(height: 8),
@@ -199,6 +263,38 @@ class EarningsScreen extends StatelessWidget {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '点卡消耗',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              Text(
+                                _formatMoney(pointCost),
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ],
+                          ),
+                          if (activity == ActivityType.digMap) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '挖图成本',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
+                                ),
+                                Text(
+                                  _formatMoney(digMapCost),
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
+                                ),
+                              ],
+                            ),
+                          ],
                           const Divider(height: 24),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -209,7 +305,23 @@ class EarningsScreen extends StatelessWidget {
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               Text(
-                                _formatMoney(cashIncome + itemsValue),
+                                _formatMoney(grossIncome),
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '预计收益（扣点卡）',
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                _formatMoney(netProfit),
                                 style: Theme.of(context).textTheme.titleLarge
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
@@ -327,6 +439,69 @@ class _CashTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DigMapCountField extends StatefulWidget {
+  const _DigMapCountField({
+    required this.enabled,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_DigMapCountField> createState() => _DigMapCountFieldState();
+}
+
+class _DigMapCountFieldState extends State<_DigMapCountField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value.toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _DigMapCountField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      final newText = widget.value.toString();
+      if (_controller.text != newText) {
+        _controller.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection.collapsed(offset: newText.length),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      enabled: widget.enabled,
+      controller: _controller,
+      keyboardType: TextInputType.number,
+      decoration: const InputDecoration(
+        labelText: '数量',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      onChanged: (s) {
+        final n = int.tryParse(s.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+        widget.onChanged(n);
+      },
     );
   }
 }
