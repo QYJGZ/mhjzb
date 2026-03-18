@@ -29,3 +29,15 @@ jobs:
         with:
           name: mhjzb-windows-installer
           path: build/windows/x64/runner/Release/*.msix
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path portable -Force | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+                           -DestinationPath portable/mhjzb-windows-portable.zip -Force
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mhjzb-windows-portable
+          path: portable/mhjzb-windows-portable.zip
