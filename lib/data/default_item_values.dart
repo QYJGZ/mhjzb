@@ -7,6 +7,9 @@ import '../models/app_state.dart';
 /// 点卡：梦幻币/点
 const int kDefaultPointPrice = 15000;
 
+/// RMB 兑换比例：每 3000W（3000万梦幻币）= 多少 RMB
+const int kDefaultRmbPer3000w = 216;
+
 /// 环装单价（60/70/80 武器与装备共用）
 const int kDefaultRing60Price = 0;
 const int kDefaultRing70Price = 0;
@@ -107,6 +110,7 @@ const Map<String, int> kDefaultOtherItemPrices = {
 /// 汇总为 PriceSettings 所用的 JSON 结构（供 default_price_settings 与存储使用）
 Map<String, dynamic> get defaultItemValuesJson => {
   'pointPrice': kDefaultPointPrice,
+  'rmbPer3000w': kDefaultRmbPer3000w,
   'ring60Price': kDefaultRing60Price,
   'ring70Price': kDefaultRing70Price,
   'ring80Price': kDefaultRing80Price,

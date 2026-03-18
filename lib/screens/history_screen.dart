@@ -6,6 +6,19 @@ class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key, required this.holder});
 
   final AppStateHolder holder;
+  static const int _coinsPer3000w = 3000 * 10000; // 3000W = 3000万梦幻币
+  static const double _feeRate = 0.05; // 手续费 5%
+
+  static String _formatRmb(double v) {
+    final sign = v < 0 ? '-' : '';
+    final abs = v.abs();
+    return '$sign${abs.toStringAsFixed(2)}';
+  }
+
+  static double _rmbNetFromProfit(int profit, PriceSettings settings) {
+    final gross = profit / _coinsPer3000w * settings.rmbPer3000w;
+    return gross * (1 - _feeRate);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +59,9 @@ class HistoryScreen extends StatelessWidget {
     final weekProfit = sumProfit(weekRecords);
     final monthProfit = sumProfit(monthRecords);
     final yearProfit = sumProfit(yearRecords);
+    final weekRmb = _rmbNetFromProfit(weekProfit, settings);
+    final monthRmb = _rmbNetFromProfit(monthProfit, settings);
+    final yearRmb = _rmbNetFromProfit(yearProfit, settings);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -69,6 +85,8 @@ class HistoryScreen extends StatelessWidget {
                     child: _SummaryCard(
                       label: '本周收益',
                       profit: weekProfit,
+                      rmbNet: weekRmb,
+                      rmbPer3000w: settings.rmbPer3000w,
                       count: weekRecords.length,
                     ),
                   ),
@@ -77,6 +95,8 @@ class HistoryScreen extends StatelessWidget {
                     child: _SummaryCard(
                       label: '本月收益',
                       profit: monthProfit,
+                      rmbNet: monthRmb,
+                      rmbPer3000w: settings.rmbPer3000w,
                       count: monthRecords.length,
                     ),
                   ),
@@ -85,6 +105,8 @@ class HistoryScreen extends StatelessWidget {
                     child: _SummaryCard(
                       label: '今年收益',
                       profit: yearProfit,
+                      rmbNet: yearRmb,
+                      rmbPer3000w: settings.rmbPer3000w,
                       count: yearRecords.length,
                     ),
                   ),
@@ -215,7 +237,7 @@ List<Widget> _buildGroupedRecords(
               ),
               const SizedBox(height: 4),
               Text(
-                '共 ${groupRecords.length} 场 · 总时长 ${hours}时${minutes}分 · 点卡 ${_RecordCard.formatMoney(totalPointCost)}'
+                '共 ${groupRecords.length} 场 · 总时长 $hours时$minutes分 · 点卡 ${_RecordCard.formatMoney(totalPointCost)}'
                 '${totalExtra > 0 ? ' · 额外消耗 ${_RecordCard.formatMoney(totalExtra)}' : ''}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -442,11 +464,15 @@ class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.label,
     required this.profit,
+    required this.rmbNet,
+    required this.rmbPer3000w,
     required this.count,
   });
 
   final String label;
   final int profit;
+  final double rmbNet;
+  final int rmbPer3000w;
   final int count;
 
   static String formatMoney(int n) => _globalFormatMoney(n);
@@ -473,6 +499,13 @@ class _SummaryCard extends StatelessWidget {
                 fontWeight: FontWeight.bold,
                 color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
               ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'RMB到手 ${HistoryScreen._formatRmb(rmbNet)}（每3000W=$rmbPer3000w，手续费5%）',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
             if (count > 0)
               Text(
@@ -511,6 +544,7 @@ class _RecordCard extends StatelessWidget {
     final minutes = duration.inMinutes % 60;
     final activityLabel = record.activityType.displayName;
     final extraCost = record.extraCost(settings);
+    final rmbNet = HistoryScreen._rmbNetFromProfit(profit, settings);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -595,6 +629,13 @@ class _RecordCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'RMB收益（到手）：${HistoryScreen._formatRmb(rmbNet)}（每3000W=${settings.rmbPer3000w}，手续费5%）',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
           ],
         ),

@@ -1,6 +1,26 @@
 /// 梦幻西游点卡：每小时 6 点，每 10 分钟 1 点，精确到秒
 const double kPointsPerHour = 6.0;
 
+/// 在线账号数变化：用于计时过程中“上线/下线”分段计费。
+class AccountCountChange {
+  final DateTime at;
+  final int accountCount;
+
+  const AccountCountChange({required this.at, required this.accountCount});
+
+  Map<String, dynamic> toJson() => {
+        'at': at.toIso8601String(),
+        'accountCount': accountCount,
+      };
+
+  static AccountCountChange fromJson(Map<String, dynamic> json) {
+    return AccountCountChange(
+      at: DateTime.parse(json['at'] as String),
+      accountCount: (json['accountCount'] as num).toInt(),
+    );
+  }
+}
+
 /// 活动类型：用于区分计时与收益统计
 enum ActivityType {
   unknown,
@@ -66,6 +86,8 @@ extension GemTypeX on GemType {
 class PriceSettings {
   /// 点卡单价：梦幻币/点，默认 15000
   int pointPrice;
+  /// RMB 兑换比例：每 3000W（3000万梦幻币）= 多少 RMB，默认 216
+  int rmbPer3000w;
   /// 环装 60/70/80 单价
   int ring60Price;
   int ring70Price;
@@ -77,6 +99,7 @@ class PriceSettings {
 
   PriceSettings({
     this.pointPrice = 15000,
+    this.rmbPer3000w = 216,
     this.ring60Price = 0,
     this.ring70Price = 0,
     this.ring80Price = 0,
@@ -99,6 +122,7 @@ class PriceSettings {
 
   PriceSettings copyWith({
     int? pointPrice,
+    int? rmbPer3000w,
     int? ring60Price,
     int? ring70Price,
     int? ring80Price,
@@ -107,6 +131,7 @@ class PriceSettings {
   }) {
     return PriceSettings(
       pointPrice: pointPrice ?? this.pointPrice,
+      rmbPer3000w: rmbPer3000w ?? this.rmbPer3000w,
       ring60Price: ring60Price ?? this.ring60Price,
       ring70Price: ring70Price ?? this.ring70Price,
       ring80Price: ring80Price ?? this.ring80Price,
@@ -117,6 +142,7 @@ class PriceSettings {
 
   Map<String, dynamic> toJson() => {
         'pointPrice': pointPrice,
+        'rmbPer3000w': rmbPer3000w,
         'ring60Price': ring60Price,
         'ring70Price': ring70Price,
         'ring80Price': ring80Price,
@@ -140,6 +166,7 @@ class PriceSettings {
         : <String, int>{};
     return PriceSettings(
       pointPrice: (json['pointPrice'] as num?)?.toInt() ?? 15000,
+      rmbPer3000w: (json['rmbPer3000w'] as num?)?.toInt() ?? 216,
       ring60Price: (json['ring60Price'] as num?)?.toInt() ?? 0,
       ring70Price: (json['ring70Price'] as num?)?.toInt() ?? 0,
       ring80Price: (json['ring80Price'] as num?)?.toInt() ?? 0,
@@ -210,6 +237,7 @@ class SessionRecord {
   DateTime startTime;
   DateTime endTime;
   int accountCount;
+  List<AccountCountChange> accountTimeline;
   int pointPricePerPoint;
   int cashIncome; // 收获的金钱（梦幻币）
   int digMapCount; // 挖图次数（仅挖图用）
@@ -223,20 +251,44 @@ class SessionRecord {
     required this.startTime,
     required this.endTime,
     required this.accountCount,
+    List<AccountCountChange>? accountTimeline,
     required this.pointPricePerPoint,
     this.cashIncome = 0,
     this.digMapCount = 0,
     this.groupId,
     List<HarvestItem>? items,
     DateTime? createdAt,
-  })  : items = items ?? [],
+  })  : accountTimeline = accountTimeline ?? const [],
+        items = items ?? [],
         createdAt = createdAt ?? DateTime.now();
 
   Duration get duration => endTime.difference(startTime);
 
   /// 消耗点卡（点）
-  double get pointsConsumed =>
-      duration.inSeconds / 3600.0 * kPointsPerHour * accountCount;
+  double get pointsConsumed {
+    if (accountTimeline.isEmpty) {
+      return duration.inSeconds / 3600.0 * kPointsPerHour * accountCount;
+    }
+    // 分段计算：每段用该段开始时的账号数计费。
+    final events = List<AccountCountChange>.from(accountTimeline)
+      ..sort((a, b) => a.at.compareTo(b.at));
+    var totalSeconds = 0;
+    for (var i = 0; i < events.length; i++) {
+      final cur = events[i];
+      final segStart = cur.at.isBefore(startTime) ? startTime : cur.at;
+      final segEnd = (i + 1 < events.length ? events[i + 1].at : endTime);
+      final end = segEnd.isAfter(endTime) ? endTime : segEnd;
+      if (end.isAfter(segStart) && cur.accountCount > 0) {
+        totalSeconds += end.difference(segStart).inSeconds * cur.accountCount;
+      }
+    }
+    // 如果时间轴缺少 startTime 前的事件，补一段用 accountCount。
+    final firstAt = events.first.at;
+    if (firstAt.isAfter(startTime) && accountCount > 0) {
+      totalSeconds += firstAt.difference(startTime).inSeconds * accountCount;
+    }
+    return totalSeconds / 3600.0 * kPointsPerHour;
+  }
 
   /// 点卡消耗（梦幻币）
   int pointCost() => (pointsConsumed * pointPricePerPoint).round();
@@ -265,6 +317,7 @@ class SessionRecord {
         'startTime': startTime.toIso8601String(),
         'endTime': endTime.toIso8601String(),
         'accountCount': accountCount,
+        'accountTimeline': accountTimeline.map((e) => e.toJson()).toList(),
         'pointPricePerPoint': pointPricePerPoint,
         'cashIncome': cashIncome,
         'digMapCount': digMapCount,
@@ -313,6 +366,12 @@ class SessionRecord {
   static SessionRecord fromJson(Map<String, dynamic> json) {
     final itemListRaw = json['items'];
     final itemList = itemListRaw is List ? itemListRaw : [];
+    final timelineRaw = json['accountTimeline'];
+    final timelineList = timelineRaw is List ? timelineRaw : const [];
+    final timeline = timelineList
+        .map((e) => e is Map ? AccountCountChange.fromJson(Map<String, dynamic>.from(e)) : null)
+        .whereType<AccountCountChange>()
+        .toList();
     ActivityType activityType = ActivityType.unknown;
     final rawType = json['activityType'];
     if (rawType is String && rawType.isNotEmpty) {
@@ -328,6 +387,7 @@ class SessionRecord {
       startTime: DateTime.parse(json['startTime'] as String),
       endTime: DateTime.parse(json['endTime'] as String),
       accountCount: (json['accountCount'] as num).toInt(),
+      accountTimeline: timeline,
       pointPricePerPoint: (json['pointPricePerPoint'] as num).toInt(),
       cashIncome: (json['cashIncome'] as num?)?.toInt() ?? 0,
       digMapCount: (json['digMapCount'] as num?)?.toInt() ?? 0,

@@ -34,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final s = widget.holder.settings;
     _draft = PriceSettings(
       pointPrice: s.pointPrice,
+      rmbPer3000w: s.rmbPer3000w,
       ring60Price: s.ring60Price,
       ring70Price: s.ring70Price,
       ring80Price: s.ring80Price,
@@ -86,6 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final code =
         '''const Map<String, dynamic> kDefaultSettingsJson = {
   'pointPrice': ${_draft.pointPrice},
+  'rmbPer3000w': ${_draft.rmbPer3000w},
   'ring60Price': ${_draft.ring60Price},
   'ring70Price': ${_draft.ring70Price},
   'ring80Price': ${_draft.ring80Price},
@@ -135,6 +137,11 @@ $gemLines
                 label: '点卡单价（梦幻币/点）',
                 value: _draft.pointPrice,
                 onChanged: (v) => _updateDraft(_draft.copyWith(pointPrice: v)),
+              ),
+              _NumberTile(
+                label: 'RMB 单价（每3000W = 多少RMB）',
+                value: _draft.rmbPer3000w,
+                onChanged: (v) => _updateDraft(_draft.copyWith(rmbPer3000w: v)),
               ),
               const SizedBox(height: 24),
               Text(

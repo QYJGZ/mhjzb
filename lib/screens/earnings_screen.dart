@@ -41,12 +41,9 @@ class EarningsScreen extends StatelessWidget {
     );
 
     final startTime = holder.startTime;
-    final accountCount = holder.accountCountFor(activity);
-    final duration = (canEdit && startTime != null)
-        ? DateTime.now().difference(startTime)
-        : Duration.zero;
-    final pointsConsumed =
-        duration.inSeconds / 3600.0 * kPointsPerHour * accountCount;
+    final pointsConsumed = (canEdit && startTime != null)
+        ? holder.pointsConsumedFor(activity)
+        : 0.0;
     final pointCost = (pointsConsumed * settings.pointPrice).round();
     final grossIncome = cashIncome + itemsValue;
     final digMapCount = holder.digMapCount;

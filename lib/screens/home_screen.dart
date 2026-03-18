@@ -17,6 +17,7 @@ class HomeScreen extends StatelessWidget {
     final accountCount = holder.accountCount;
     final totalRunning = holder.isTotalRunning;
     final totalStart = holder.totalStartTime;
+    final currentTotalAccountCount = holder.currentTotalAccountCount;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Center(
@@ -53,6 +54,33 @@ class HomeScreen extends StatelessWidget {
                         _TimerDisplay(
                           startTime: totalStart,
                           accountCount: accountCount,
+                          accountCountGetter: () => holder.currentTotalAccountCount,
+                          pointsGetter: () => holder.totalPointsConsumed(),
+                        ),
+                        const SizedBox(height: 12),
+                        _AccountAdjustRow(
+                          currentAccountCount: currentTotalAccountCount,
+                          onAdd: () async {
+                            final n = await _askChangeCount(
+                              context,
+                              title: '总计时上线几个号',
+                              hint: '输入上线数量（1-10）',
+                            );
+                            if (n == null || n <= 0) return;
+                            holder.adjustTotalAccountCount(n);
+                          },
+                          onRemove: () async {
+                            final n = await _askChangeCount(
+                              context,
+                              title: '总计时下线几个号',
+                              hint: '输入下线数量（1-10）',
+                            );
+                            if (n == null || n <= 0) return;
+                            holder.adjustTotalAccountCount(-n);
+                            if (holder.currentTotalAccountCount == 0) {
+                              holder.endTotalSession();
+                            }
+                          },
                         ),
                         const SizedBox(height: 12),
                         FilledButton.icon(
@@ -116,7 +144,14 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('在线账号数', style: Theme.of(context).textTheme.titleMedium),
+            Text('默认在线账号数', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              '用于新开始计时；计时中请用下方「上线/下线」调整。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
             const SizedBox(height: 12),
             Wrap(
               alignment: WrapAlignment.center,
@@ -153,6 +188,7 @@ class _SessionCard extends StatelessWidget {
     final isRunning = holder.isRunningFor(type);
     final startTime = holder.startTimeFor(type);
     final accountCount = holder.accountCountFor(type);
+    final currentAccountCount = holder.currentAccountCountFor(type);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -192,7 +228,40 @@ class _SessionCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (isRunning && startTime != null) ...[
-              _TimerDisplay(startTime: startTime, accountCount: accountCount),
+              _TimerDisplay(
+                startTime: startTime,
+                accountCount: accountCount,
+                accountCountGetter: () => holder.currentAccountCountFor(type),
+                pointsGetter: () => holder.pointsConsumedFor(type),
+              ),
+              const SizedBox(height: 12),
+              _AccountAdjustRow(
+                currentAccountCount: currentAccountCount,
+                onAdd: () async {
+                  final n = await _askChangeCount(context, title: '上线几个号', hint: '输入上线数量（1-10）');
+                  if (n == null || n <= 0) return;
+                  holder.adjustRunningAccountCount(type, n);
+                },
+                onRemove: () async {
+                  final n = await _askChangeCount(context, title: '下线几个号', hint: '输入下线数量（1-10）');
+                  if (n == null || n <= 0) return;
+                  final before = holder.currentAccountCountFor(type);
+                  holder.adjustRunningAccountCount(type, -n);
+                  final after = holder.currentAccountCountFor(type);
+                  if (before > 0 && after == 0) {
+                    final record = await holder.endSession(type);
+                    if (!context.mounted) return;
+                    if (record != null) {
+                      final profit = record.profit(holder.settings);
+                      final msg = profit >= 0
+                          ? '${type.displayName} 已结束并保存 · 本次收益 +${_formatMoney(profit)}'
+                          : '${type.displayName} 已结束并保存 · 本次收益 ${_formatMoney(profit)}';
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text(msg)));
+                    }
+                  }
+                },
+              ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: () async {
@@ -234,11 +303,98 @@ class _SessionCard extends StatelessWidget {
   }
 }
 
+class _AccountAdjustRow extends StatelessWidget {
+  const _AccountAdjustRow({
+    required this.currentAccountCount,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final int currentAccountCount;
+  final VoidCallback onAdd;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '当前在线：$currentAccountCount 个号',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: onRemove,
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('下线'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.login_rounded),
+              label: const Text('上线'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<int?> _askChangeCount(
+  BuildContext context, {
+  required String title,
+  required String hint,
+}) async {
+  final controller = TextEditingController(text: '1');
+  final n = await showDialog<int>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: hint,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final raw = controller.text.replaceAll(RegExp(r'[^\d]'), '');
+            final v = int.tryParse(raw) ?? 0;
+            Navigator.pop(ctx, v);
+          },
+          child: const Text('确定'),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  return n;
+}
+
 class _TimerDisplay extends StatefulWidget {
-  const _TimerDisplay({required this.startTime, required this.accountCount});
+  const _TimerDisplay({
+    required this.startTime,
+    required this.accountCount,
+    this.accountCountGetter,
+    this.pointsGetter,
+  });
 
   final DateTime startTime;
   final int accountCount;
+  final int Function()? accountCountGetter;
+  final double Function()? pointsGetter;
 
   @override
   State<_TimerDisplay> createState() => _TimerDisplayState();
@@ -269,8 +425,9 @@ class _TimerDisplayState extends State<_TimerDisplay> {
     final str =
         '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 
-    final points =
-        elapsed.inSeconds / 3600.0 * kPointsPerHour * widget.accountCount;
+    final displayCount = widget.accountCountGetter?.call() ?? widget.accountCount;
+    final points = widget.pointsGetter?.call() ??
+        (elapsed.inSeconds / 3600.0 * kPointsPerHour * widget.accountCount);
 
     return Card(
       child: Padding(
@@ -285,7 +442,7 @@ class _TimerDisplayState extends State<_TimerDisplay> {
             ),
             const SizedBox(height: 8),
             Text(
-              '已消耗约 ${points.toStringAsFixed(1)} 点（${widget.accountCount} 个号）',
+              '已消耗约 ${points.toStringAsFixed(1)} 点（$displayCount 个号）',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
