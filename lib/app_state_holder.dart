@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'models/app_state.dart';
 import 'services/storage_service.dart';
+import 'models/daily_income.dart';
 
 class _RunningSession {
   bool isRunning = false;
@@ -94,6 +95,7 @@ class AppStateHolder extends ChangeNotifier {
   late StorageService _storage;
   PriceSettings _settings = PriceSettings();
   List<SessionRecord> _records = [];
+  List<DailyIncome> _dailyIncomes = [];
 
   int _accountCount = 1;
   ActivityType _selectedActivity = ActivityType.unknown;
@@ -111,6 +113,8 @@ class AppStateHolder extends ChangeNotifier {
 
   PriceSettings get settings => _settings;
   List<SessionRecord> get records => _records;
+  List<DailyIncome> get dailyIncomes =>
+      List<DailyIncome>.unmodifiable(_dailyIncomes);
   int get accountCount => _accountCount;
 
   ActivityType get selectedActivity => _selectedActivity;
@@ -220,6 +224,86 @@ class AppStateHolder extends ChangeNotifier {
     _settings = await _storage.loadSettings();
     _records = await _storage.loadRecords();
     notifyListeners();
+  }
+
+  /// 兼容旧页面调用：现在同一天多次录入会新增多条记录。
+  Future<void> addOrUpdateDailyIncome({
+    required DateTime date,
+    required int coinIncome,
+    required int cashIncome,
+  }) async {
+    // 兼容旧函数名：现在支持“同一天多次录入”，因此直接新增一条。
+    await addDailyIncome(date: date, coinIncome: coinIncome, cashIncome: cashIncome);
+  }
+
+  /// 每一次录入都新增一条记录（同一天允许多条）。
+  Future<void> addDailyIncome({
+    required DateTime date,
+    required int coinIncome,
+    required int cashIncome,
+  }) async {
+    final d = DateTime(date.year, date.month, date.day);
+    final list = List<DailyIncome>.from(_dailyIncomes);
+    // 使用当前时间生成 id，确保同一天连续录入时也不会冲突。
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    list.add(
+      DailyIncome(
+        id: id,
+        date: d,
+        coinIncome: coinIncome,
+        cashIncome: cashIncome,
+      ),
+    );
+    list.sort((a, b) {
+      final cmp = a.date.compareTo(b.date);
+      if (cmp != 0) return cmp;
+      return a.id.compareTo(b.id);
+    });
+    _dailyIncomes = list;
+    await _storage.saveDailyIncomes(_dailyIncomes);
+    notifyListeners();
+  }
+
+  /// 删除一条每日收入记录（非“按天删除”）。
+  Future<void> deleteDailyIncome(String id) async {
+    if (_dailyIncomes.isEmpty) return;
+    _dailyIncomes = _dailyIncomes.where((e) => e.id != id).toList();
+    await _storage.saveDailyIncomes(_dailyIncomes);
+    notifyListeners();
+  }
+
+  Future<void> clearAllDailyIncomes() async {
+    _dailyIncomes = [];
+    await _storage.saveDailyIncomes(_dailyIncomes);
+    notifyListeners();
+  }
+
+  DailyIncome? dailyIncomeFor(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    DailyIncome? last;
+    for (final e in _dailyIncomes) {
+      if (e.date.year == d.year &&
+          e.date.month == d.month &&
+          e.date.day == d.day) {
+        last = e;
+      }
+    }
+    return last;
+  }
+
+  /// “搬砖天数”：按自然日去重后统计天数。
+  int get recordedDays => _dailyIncomes
+      .map((e) => DateTime(e.date.year, e.date.month, e.date.day).toIso8601String())
+      .toSet()
+      .length;
+
+  int get totalCashIncomeAllDays =>
+      _dailyIncomes.fold(0, (sum, e) => sum + e.cashIncome);
+
+  int coinIncomeForRange(DateTime from, DateTime to) {
+    return _dailyIncomes
+        .where((e) => !e.date.isBefore(from) && !e.date.isAfter(to))
+        .fold(0, (sum, e) => sum + e.coinIncome);
   }
 
   /// 仅更新内存中的价格（不持久化），用于设置页编辑时收益页即时刷新

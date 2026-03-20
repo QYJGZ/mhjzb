@@ -3,8 +3,6 @@ import 'app_state_holder.dart';
 import 'app_scope.dart';
 import 'screens/home_screen.dart';
 import 'screens/earnings_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/history_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,14 +87,43 @@ class _MainScaffoldState extends State<_MainScaffold> {
           appBar: AppBar(
             title: Text(_title(holder)),
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+            actions: _index == 1
+                ? [
+                    IconButton(
+                      icon: const Icon(Icons.delete_sweep_outlined),
+                      tooltip: '清空录入数据',
+                      onPressed: () async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('清空所有录入数据？'),
+                            content:
+                                const Text('此操作会删除所有已录入的每日收入记录，确定要清空吗？'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('取消'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('确定'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok == true) {
+                          await holder.clearAllDailyIncomes();
+                        }
+                      },
+                    ),
+                  ]
+                : null,
           ),
           body: IndexedStack(
             index: _index,
             children: [
               HomeScreen(holder: holder),
               EarningsScreen(holder: holder),
-              SettingsScreen(holder: holder),
-              HistoryScreen(holder: holder),
             ],
           ),
           bottomNavigationBar: NavigationBar(
@@ -104,24 +131,14 @@ class _MainScaffoldState extends State<_MainScaffold> {
             onDestinationSelected: (i) => setState(() => _index = i),
             destinations: const [
               NavigationDestination(
-                icon: Icon(Icons.timer_outlined),
-                selectedIcon: Icon(Icons.timer),
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home),
                 label: '首页',
               ),
               NavigationDestination(
-                icon: Icon(Icons.savings_outlined),
-                selectedIcon: Icon(Icons.savings),
-                label: '收益',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: '设置',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.history),
-                selectedIcon: Icon(Icons.history),
-                label: '历史',
+                icon: Icon(Icons.edit_note_outlined),
+                selectedIcon: Icon(Icons.edit_note),
+                label: '录入',
               ),
             ],
           ),
@@ -133,15 +150,11 @@ class _MainScaffoldState extends State<_MainScaffold> {
   String _title(AppStateHolder holder) {
     switch (_index) {
       case 0:
-        return '梦幻西游 收益计算';
+        return '首页';
       case 1:
-        return '收益录入';
-      case 2:
-        return '价格设置';
-      case 3:
-        return '历史记录';
+        return '录入';
       default:
-        return '梦幻西游 收益计算';
+        return '首页';
     }
   }
 }
